@@ -1,0 +1,49 @@
+{
+  "name": "figma-kiwi-protocol",
+  "version": "0.1.0",
+  "description": "Decode Figma's binary Kiwi wire protocol — extract scenegraph, SVG vectors, and CSS from WebSocket frames",
+  "type": "module",
+  "main": "./lib/index.mjs",
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./kiwi": "./lib/kiwi.mjs",
+    "./scenegraph": "./lib/scenegraph.mjs",
+    "./svg": "./lib/svg.mjs",
+    "./css": "./lib/css.mjs"
+  },
+  "bin": {
+    "figma-kiwi-protocol": "./bin/cli.mjs"
+  },
+  "files": [
+    "lib/",
+    "bin/"
+  ],
+  "scripts": {
+    "capture": "node bin/cli.mjs capture",
+    "capture-all": "node bin/cli.mjs capture-all-pages",
+    "decode": "node bin/cli.mjs decode",
+    "extract-svgs": "node bin/cli.mjs extract-svgs"
+  },
+  "keywords": [
+    "figma",
+    "kiwi",
+    "protocol",
+    "binary",
+    "decode",
+    "scenegraph",
+    "svg",
+    "css",
+    "design-to-code",
+    "reverse-engineering",
+    "interoperability"
+  ],
+  "author": "Allan Simon",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/allan-simon/figma-kiwi-protocol.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

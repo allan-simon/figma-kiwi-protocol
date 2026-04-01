@@ -1,0 +1,7 @@
+node_modules/
+.env
+.cache/
+*.bin
+scenegraph.json
+svg_index.json
+svgs/
