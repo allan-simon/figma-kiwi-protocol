@@ -1,6 +1,6 @@
 {
   "name": "figma-kiwi-protocol",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Decode Figma's binary Kiwi wire protocol — extract scenegraph, SVG vectors, and CSS from WebSocket frames",
   "type": "module",
   "main": "./lib/index.mjs",
