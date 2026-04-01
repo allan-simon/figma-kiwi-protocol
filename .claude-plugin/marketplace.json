@@ -1,0 +1,16 @@
+{
+  "name": "figma-kiwi-protocol",
+  "owner": {
+    "name": "Allan Simon"
+  },
+  "plugins": [
+    {
+      "name": "figma-kiwi-protocol",
+      "source": {
+        "source": "github",
+        "repo": "allan-simon/figma-kiwi-protocol"
+      },
+      "description": "Decode Figma's binary Kiwi wire protocol — extract scenegraph, SVGs, and CSS from WebSocket frames, bypassing REST API rate limits"
+    }
+  ]
+}
