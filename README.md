@@ -96,6 +96,8 @@ if (isFigWireFrame(frameBytes)) {
 
 ## Binary formats documented
 
+Machine-readable [Kaitai Struct](https://kaitai.io/) specifications (`.ksy`) are in [`kaitai/`](kaitai/) — you can generate parsers in any language or visualize binary data in the [Kaitai Web IDE](https://ide.kaitai.io/).
+
 ### fig-wire frame
 ```
 Offset  Size  Description

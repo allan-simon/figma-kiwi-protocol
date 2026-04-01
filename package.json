@@ -16,7 +16,8 @@
   },
   "files": [
     "lib/",
-    "bin/"
+    "bin/",
+    "kaitai/"
   ],
   "scripts": {
     "capture": "node bin/cli.mjs capture",
@@ -45,5 +46,9 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "kaitai-struct": "^0.11.0",
+    "kaitai-struct-compiler": "^0.11.0"
   }
 }
