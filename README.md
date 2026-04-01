@@ -194,11 +194,7 @@ claude --plugin-dir /path/to/figma-kiwi-protocol
 
 ### Use
 
-Once installed, invoke the skill in Claude Code:
-
-```
-/figma-explorer
-```
+The skill is auto-invoked by Claude when you ask about Figma designs. Just give Claude a Figma URL or ask it to explore a design — it will use the skill automatically.
 
 Claude will have access to all capture, decode, and query commands.
 
