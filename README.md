@@ -2,6 +2,8 @@
 
 Decode Figma's binary Kiwi wire protocol. Extract the full scenegraph, SVG vectors, and CSS properties from WebSocket frames — no REST API rate limits, no paid plan required.
 
+Ships as a **[lib](#library-usage)**, **[CLI](#quick-start)**, **[MCP server](#mcp-server)**, and **[Claude Code plugin](#claude-code-plugin)**.
+
 ## What this does
 
 Figma uses [Kiwi](https://github.com/nicowilliams/kiwi) (a binary serialization format by Evan Wallace) over WebSocket for real-time sync between the editor and the server. When you open a Figma file in the browser, the entire scenegraph — every node, every vector path, every style — is streamed as Kiwi-encoded binary frames.
