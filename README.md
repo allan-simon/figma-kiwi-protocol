@@ -141,6 +141,31 @@ This project contains no Figma proprietary code. It only decodes the wire format
 
 *Not affiliated with Figma, Inc.*
 
+## Claude Code plugin
+
+This repo ships as an installable Claude Code plugin with a skill that lets Claude explore Figma designs directly.
+
+### Install
+
+```bash
+# Test locally
+claude --plugin-dir /path/to/figma-kiwi-protocol
+
+# Or install from GitHub
+/plugin marketplace add allan-simon/figma-kiwi-protocol
+/plugin install figma-kiwi-protocol
+```
+
+### Use
+
+Once installed, invoke the skill in Claude Code:
+
+```
+/figma-kiwi-protocol
+```
+
+Claude will have access to all capture, decode, and query commands.
+
 ## License
 
 MIT

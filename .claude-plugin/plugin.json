@@ -1,0 +1,12 @@
+{
+  "name": "figma-kiwi-protocol",
+  "description": "Decode Figma's binary Kiwi wire protocol — extract scenegraph, SVGs, and CSS from WebSocket frames, bypassing REST API rate limits",
+  "version": "0.1.0",
+  "author": {
+    "name": "Allan Simon"
+  },
+  "homepage": "https://github.com/allan-simon/figma-kiwi-protocol",
+  "repository": "https://github.com/allan-simon/figma-kiwi-protocol",
+  "license": "MIT",
+  "keywords": ["figma", "kiwi", "protocol", "decode", "scenegraph", "svg", "css"]
+}
