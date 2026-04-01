@@ -141,6 +141,42 @@ This project contains no Figma proprietary code. It only decodes the wire format
 
 *Not affiliated with Figma, Inc.*
 
+## MCP server
+
+Expose Figma scenegraph tools to any MCP-compatible AI tool (Claude Code, Cursor, Windsurf, VS Code).
+
+### Configure
+
+Add to `.mcp.json` or `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "figma": {
+      "command": "node",
+      "args": ["/path/to/figma-kiwi-protocol/mcp/server.mjs"],
+      "env": {
+        "FIGMA_KIWI_DIR": "/tmp/figma_kiwi"
+      }
+    }
+  }
+}
+```
+
+### Tools exposed
+
+| Tool | Description |
+|------|-------------|
+| `figma_pages` | List all pages |
+| `figma_page` | Show page tree at configurable depth |
+| `figma_node` | Inspect node with CSS and tree |
+| `figma_search` | Search nodes by name |
+| `figma_css` | Extract CSS properties |
+| `figma_texts` | Extract all text from a page |
+| `figma_components` | List components and variants |
+
+Requires a decoded scenegraph — run `figma-kiwi-protocol capture-all-pages` then `decode` first.
+
 ## Claude Code plugin
 
 This repo ships as an installable Claude Code plugin with a skill that lets Claude explore Figma designs directly.
@@ -161,7 +197,7 @@ claude --plugin-dir /path/to/figma-kiwi-protocol
 Once installed, invoke the skill in Claude Code:
 
 ```
-/figma-kiwi-protocol
+/figma-explorer
 ```
 
 Claude will have access to all capture, decode, and query commands.
