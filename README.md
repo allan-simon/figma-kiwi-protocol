@@ -200,6 +200,29 @@ The skill is auto-invoked by Claude when you ask about Figma designs. Just give 
 
 Claude will have access to all capture, decode, and query commands.
 
+## Known limitations / TODO
+
+### SVG extraction
+- **Composite icons**: Icon SYMBOLs with child VECTOR nodes need transform composition (parent + children → one SVG). Currently each VECTOR is extracted individually.
+- **Transforms**: Rotation/translation matrices on child nodes are not applied to SVG output yet.
+- **Boolean operations**: BOOLEAN_OPERATION nodes (union, subtract, intersect) are not handled — these combine child paths.
+- **Computed shapes**: ROUNDED_RECTANGLE, ELLIPSE, STAR, REGULAR_POLYGON don't have `commandsBlob` — their geometry is computed from parameters. Need to generate SVG paths from cornerRadius, point count, etc.
+- **Image fills**: `type: IMAGE` references SHA1 hashes, not vector data. Use the image batch endpoint to resolve URLs.
+
+### Scenegraph
+- **Prototype interactions**: Decoded but not yet exposed in the MCP server or lib API.
+- **Component property overrides**: Parsed (symbolOverrides, componentPropAssignments) but not exposed in query tools.
+- **Gradient fills**: Decoded from Kiwi but CSS extraction only outputs solid colors.
+
+### Protocol
+- **Incremental updates**: Only the initial full scenegraph load is captured. Real-time edits (subsequent smaller WS frames) are not decoded.
+- **Write support**: Read-only — no ability to push changes back to Figma.
+- **Schema versioning**: The Kiwi schema (~558 types) is extracted per-session. Figma may change it at any time.
+
+### Distribution
+- **npm publish**: Not yet published to npm registry.
+- **Kaitai Web IDE**: Sample fixture files exist but aren't hosted for direct web visualization.
+
 ## License
 
 MIT
