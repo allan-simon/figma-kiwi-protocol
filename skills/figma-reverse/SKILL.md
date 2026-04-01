@@ -1,7 +1,6 @@
 ---
 name: figma-reverse
-description: Explore Figma designs by decoding the binary Kiwi wire protocol — full scenegraph access, SVG extraction, CSS properties, no REST API rate limits.
-user-invocable: true
+description: Explore Figma designs by decoding the binary Kiwi wire protocol — full scenegraph access, SVG extraction, CSS properties, no REST API rate limits. Use when the user asks to inspect, explore, or implement from a Figma design.
 ---
 
 # Figma Kiwi Protocol — Design Explorer
