@@ -1,5 +1,5 @@
 ---
-name: figma-kiwi-protocol
+name: figma-reverse
 description: Explore Figma designs by decoding the binary Kiwi wire protocol — full scenegraph access, SVG extraction, CSS properties, no REST API rate limits.
 user-invocable: true
 ---
