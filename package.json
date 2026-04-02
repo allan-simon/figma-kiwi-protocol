@@ -25,6 +25,7 @@
     "capture-all": "node bin/cli.mjs capture-all-pages",
     "decode": "node bin/cli.mjs decode",
     "extract-svgs": "node bin/cli.mjs extract-svgs",
+    "to-html": "node bin/cli.mjs to-html",
     "mcp": "node mcp/server.mjs"
   },
   "keywords": [

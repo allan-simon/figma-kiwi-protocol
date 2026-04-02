@@ -8,6 +8,7 @@ const commands = {
   'capture-all-pages': './capture-all-pages.mjs',
   decode: './decode.mjs',
   'extract-svgs': './extract-svgs.mjs',
+  'to-html': './to-html.mjs',
 };
 
 if (!cmd || cmd === '--help' || cmd === '-h') {
@@ -21,6 +22,8 @@ Commands:
   capture-all-pages   Capture all pages (discovers via REST API)
   decode              Decode captured frames into scenegraph.json
   extract-svgs        Extract VECTOR nodes as individual SVG files
+  extract-svgs --compose <id>  Compose SYMBOL icon into inline-ready SVG
+  to-html             Generate HTML/Tailwind from scenegraph nodes
 
 Environment variables:
   CDP_WS_URL        Chrome DevTools WebSocket URL
@@ -33,6 +36,8 @@ Workflow:
   2. figma-kiwi-protocol capture-all-pages    # capture binary frames
   3. figma-kiwi-protocol decode               # decode into JSON scenegraph
   4. figma-kiwi-protocol extract-svgs         # extract vector SVGs
+  5. figma-kiwi-protocol to-html <node_id>    # generate HTML from a node
+  6. figma-kiwi-protocol extract-svgs --compose <id>  # compose icon SVG
 
 Library usage:
   import { commandsBlobToPath, extractSvgs, buildTree } from 'figma-kiwi-protocol';
