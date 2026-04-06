@@ -349,6 +349,46 @@ def parse_variant_props(name):
             props[k.strip()] = v.strip()
     return props
 
+
+def parse_variant_filter(spec):
+    """Parse 'State=Close,Système=Mac' (commas) into a dict."""
+    out = {}
+    for part in re.split(r',\s*', spec):
+        if '=' in part:
+            k, v = part.split('=', 1)
+            out[k.strip()] = v.strip()
+    return out
+
+def variant_matches(variant_name, filt):
+    props = parse_variant_props(variant_name)
+    # case-insensitive key+value match; all filter keys must match
+    plow = {k.lower(): v.lower() for k, v in props.items()}
+    for k, v in filt.items():
+        if plow.get(k.lower()) != v.lower():
+            return False
+    return True
+
+def pick_variant(nodes, variant_ids, filt):
+    """Return first variant id whose props match all filter entries, else None."""
+    for vid in variant_ids:
+        n = nodes.get(vid, {})
+        if variant_matches(n.get('name', ''), filt):
+            return vid
+    return None
+
+def pop_variant_arg(argv):
+    """Extract --variant <spec> from argv (mutates), returns dict or None."""
+    for i, a in enumerate(argv):
+        if a == '--variant' and i + 1 < len(argv):
+            spec = argv[i+1]
+            del argv[i:i+2]
+            return parse_variant_filter(spec)
+        if a.startswith('--variant='):
+            spec = a.split('=', 1)[1]
+            del argv[i]
+            return parse_variant_filter(spec)
+    return None
+
 def find_instances_of(nodes, data, component_id):
     """Find all INSTANCE nodes that reference a given component (by symbolID)."""
     # Parse component_id into sessionID:localID
@@ -387,6 +427,7 @@ def main():
         print(__doc__)
         sys.exit(1)
 
+    variant_filter = pop_variant_arg(sys.argv)
     cmd = sys.argv[1]
     data = load()
     nodes = build_tree(data)
@@ -464,6 +505,29 @@ def main():
                     for t in transitions:
                         print(f"  {t['from']:<30} → {t['event']:<30} → {t['to']}")
                 print()
+
+                # If --variant filter, drill into that single variant instead of full set
+                if variant_filter:
+                    chosen = pick_variant(nodes, variant_children, variant_filter)
+                    if chosen:
+                        vn = nodes[chosen]
+                        print(f"Selected variant: {vn['name']} ({chosen})")
+                        vcss = extract_css(vn["_raw"])
+                        if vcss:
+                            print("CSS:")
+                            for k, v in vcss.items():
+                                print(f"  {k}: {v}")
+                            print()
+                        print("Tree:")
+                        print_tree(nodes, chosen, depth=5)
+                        return_after = True
+                    else:
+                        print(f"No variant matches filter {variant_filter}\n")
+                        return_after = False
+                else:
+                    return_after = False
+                if return_after:
+                    sys.exit(0)
 
             print("Tree:")
             print_tree(nodes, nid, depth=5)
@@ -683,17 +747,29 @@ def main():
                     print(f"  {t['from']:<30} → {t['event']:<30} → {t['to']}")
                 print()
 
-            # Show tree of first visible variant
-            first_visible = None
-            for vcid in variant_children:
-                vn = nodes.get(vcid, {})
-                if vn.get("visible", True):
-                    first_visible = vcid
-                    break
-            if first_visible:
-                vn = nodes.get(first_visible, {})
-                print(f"Tree (first variant: {vn['name']}):")
-                print_tree(nodes, first_visible, depth=4)
+            # Pick variant: --variant filter, else first visible
+            chosen = None
+            if variant_filter:
+                chosen = pick_variant(nodes, variant_children, variant_filter)
+                if not chosen:
+                    print(f"No variant matches filter {variant_filter}")
+            if not chosen:
+                for vcid in variant_children:
+                    if nodes.get(vcid, {}).get("visible", True):
+                        chosen = vcid
+                        break
+            if chosen:
+                vn = nodes.get(chosen, {})
+                label = "matched" if variant_filter else "first"
+                print(f"Tree ({label} variant: {vn['name']}):")
+                # CSS for the chosen variant
+                vcss = extract_css(vn["_raw"])
+                if vcss:
+                    print("CSS:")
+                    for k, v in vcss.items():
+                        print(f"  {k}: {v}")
+                    print()
+                print_tree(nodes, chosen, depth=4)
 
         else:
             # Single component
@@ -750,6 +826,60 @@ def main():
                 print(f"  {inst['name']} ({inst['id']}){page_str}")
             if len(instances) > 20:
                 print(f"  ... +{len(instances)-20} more")
+
+    elif cmd == "states":
+        if len(sys.argv) < 3:
+            print("Usage: figma_local.py states <component_name_or_id>")
+            sys.exit(1)
+        query = sys.argv[2]
+        target = find_by_id(nodes, query)
+        if not target:
+            matches = find_by_name(nodes, query)
+            # Prefer component sets
+            for nid_, n_ in matches.items():
+                if n_["type"] == "FRAME" and any(
+                    nodes.get(c, {}).get("type") == "SYMBOL" for c in n_["children"]
+                ):
+                    target = n_
+                    break
+            if not target and matches:
+                target = next(iter(matches.values()))
+        if not target:
+            print(f"Component '{query}' not found")
+            sys.exit(1)
+
+        variant_children = [cid for cid in target["children"]
+                            if nodes.get(cid, {}).get("type") == "SYMBOL"]
+        if not variant_children:
+            print(f"{target['name']} ({target['id']}) has no variants")
+            sys.exit(0)
+
+        print(f"{target['name']} ({target['id']}) — {len(variant_children)} variants\n")
+
+        # Collect property -> set of values
+        all_props = {}
+        for vcid in variant_children:
+            vn = nodes.get(vcid, {})
+            for k, v in parse_variant_props(vn.get("name", "")).items():
+                all_props.setdefault(k, set()).add(v)
+        if all_props:
+            print("Properties:")
+            for k, vs in all_props.items():
+                print(f"  {k}: {', '.join(sorted(vs))}")
+            print()
+
+        print("Variants:")
+        for vcid in variant_children:
+            vn = nodes.get(vcid, {})
+            vis = "" if vn.get("visible", True) else " [hidden]"
+            print(f"  {vn['name']} ({vcid}){vis}")
+        print()
+
+        transitions = extract_state_machine(nodes, target["id"], variant_children)
+        if transitions:
+            print("State machine:")
+            for t in transitions:
+                print(f"  {t['from']:<30} → {t['event']:<30} → {t['to']}")
 
     elif cmd == "instances":
         if len(sys.argv) < 3:
