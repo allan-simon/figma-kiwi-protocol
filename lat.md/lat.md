@@ -8,3 +8,4 @@ Knowledge base for the reverse-engineered Figma binary multiplayer protocol. Doc
 - [[recon-handshake]] — one-shot CDP recon to extract cookies + multiplayer URL
 - [[standalone-client]] — Node-side WebSocket client that bypasses Chrome at runtime
 - [[auto-layout]] — Figma's `stack*` field vocabulary mapped to plugin-API names
+- [[clone]] — deep-clone a node subtree into a fresh independent copy via the wire protocol

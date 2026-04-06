@@ -12,6 +12,8 @@ const commands = {
   'standalone-client': './standalone-client.mjs',
   'figma-write': './figma-write.mjs',
   write: './figma-write.mjs',
+  'figma-clone': './figma-clone.mjs',
+  clone: './figma-clone.mjs',
   'extract-svgs': './extract-svgs.mjs',
   'to-html': './to-html.mjs',
 };
