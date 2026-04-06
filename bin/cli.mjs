@@ -14,6 +14,8 @@ const commands = {
   write: './figma-write.mjs',
   'figma-clone': './figma-clone.mjs',
   clone: './figma-clone.mjs',
+  'build-footer-fresh': './build-footer-fresh.mjs',
+  'footer-responsive-fix': './footer-responsive-fix.mjs',
   'extract-svgs': './extract-svgs.mjs',
   'to-html': './to-html.mjs',
 };

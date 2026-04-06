@@ -9,3 +9,4 @@ Knowledge base for the reverse-engineered Figma binary multiplayer protocol. Doc
 - [[standalone-client]] — Node-side WebSocket client that bypasses Chrome at runtime
 - [[auto-layout]] — Figma's `stack*` field vocabulary mapped to plugin-API names
 - [[clone]] — deep-clone a node subtree into a fresh independent copy via the wire protocol
+- [[builder]] — author Figma nodes from scratch with the wire-format gotchas pre-handled
