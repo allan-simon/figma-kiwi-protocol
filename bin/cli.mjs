@@ -8,6 +8,10 @@ const commands = {
   'capture-all-pages': './capture-all-pages.mjs',
   decode: './decode.mjs',
   'decode-frames': './decode-frames.mjs',
+  'recon-handshake': './recon-handshake.mjs',
+  'standalone-client': './standalone-client.mjs',
+  'figma-write': './figma-write.mjs',
+  write: './figma-write.mjs',
   'extract-svgs': './extract-svgs.mjs',
   'to-html': './to-html.mjs',
 };
