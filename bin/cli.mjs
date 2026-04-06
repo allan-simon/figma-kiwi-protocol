@@ -7,6 +7,7 @@ const commands = {
   capture: './capture.mjs',
   'capture-all-pages': './capture-all-pages.mjs',
   decode: './decode.mjs',
+  'decode-frames': './decode-frames.mjs',
   'extract-svgs': './extract-svgs.mjs',
   'to-html': './to-html.mjs',
 };
@@ -21,6 +22,7 @@ Commands:
   capture             Capture WebSocket frames from a single page reload
   capture-all-pages   Capture all pages (discovers via REST API)
   decode              Decode captured frames into scenegraph.json
+  decode-frames       Decode every captured frame (sent + recv) for inspection
   extract-svgs        Extract VECTOR nodes as individual SVG files
   extract-svgs --compose <id>  Compose SYMBOL icon into inline-ready SVG
   to-html             Generate HTML/Tailwind from scenegraph nodes
