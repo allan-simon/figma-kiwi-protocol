@@ -84,37 +84,101 @@ const middle    = lookup('Frame 537');
 const right     = lookup('Frame 531');
 const langs     = lookup('Frame 530');     // the Languages column (only one with stackPrimarySizing=FIXED)
 const headline  = lookup('JOIN THE SOUND OF ID BY RIVOLI NOW');
+const image     = lookup('image 73');      // the rounded-rectangle image at the bottom of the left card
+const colQuick  = lookup('Frame 528');     // Quick links column (inside middle)
+const colLegal  = lookup('Frame 529');     // Legal column (inside middle)
 
 console.error('Source → clone guid map for the responsive fix:');
-for (const [label, x] of Object.entries({ root, left, middle, right, langs, headline })) {
+for (const [label, x] of Object.entries({ root, left, middle, right, langs, headline, image, colQuick, colLegal })) {
   console.error(`  ${label.padEnd(10)} ${x.sourceId.padEnd(14)} → ${x.cloneGuid.sessionID}:${x.cloneGuid.localID}`);
 }
 
-// Build the responsive fix mutations
+// Build the responsive fix mutations.
+//
+// Strategy ("approach A" — real responsive with wrap):
+//   - The root row wraps when there's not enough horizontal space, instead of
+//     compressing children past readability. Wrapped rows are stacked with a
+//     counter-axis gap.
+//   - Each section has a sane minSize so it never collapses below a usable
+//     width. Once the available width is below the sum of mins, wrap kicks in.
+//   - Left + middle sections grow to fill the available space; the right
+//     icon row stays its natural width.
+//   - Image inside the left card stretches to fill the card's width.
+//   - Left card distributes its content vertically (header at top, image at
+//     bottom) instead of leaving a gap.
 const mutations = [
-  // 1. Root: smaller, uniform padding + tighter spacing
+  // 1. Root: tighter padding + spacing, plus WRAP and counter-axis settings.
+  //    stackCounterSizing=Hug so the footer grows tall when rows wrap.
   {
     guid: root.cloneGuid,
     stackHorizontalPadding: 48,
     stackPaddingRight: 48,
     stackVerticalPadding: 48,
     stackPaddingBottom: 48,
-    stackSpacing: 48,
+    stackSpacing: 32,
+    stackCounterSpacing: 32,                                     // gap between wrapped rows
+    stackWrap: 'WRAP',
+    stackCounterSizing: 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE',
+    stackPrimaryAlignItems: 'MIN',                               // pack from the left
+    stackCounterAlignItems: 'CENTER',                            // align children vertically inside their row
   },
-  // 2. Left card: grow with parent like the middle column does
+  // 2. Left CTA card: grow + minSize so it never compresses below the headline,
+  //    plus SPACE_BETWEEN distribution so its header sits at top and the image at bottom.
   {
     guid: left.cloneGuid,
     stackChildPrimaryGrow: 1,
+    minSize: { x: 320, y: 0 },
+    stackPrimaryAlignItems: 'SPACE_BETWEEN',
   },
-  // 3. Languages column: align with sister columns (Hug instead of Fixed)
+  // 3. Middle 3-column block: grow + WRAP its own children so the 3 columns
+  //    redistribute onto multiple rows when there's not enough room. The source
+  //    used SPACE_EVENLY which lets cols overlap with negative gap once
+  //    compressed — that's the bug. We replace it with a fixed gap and a real
+  //    wrap so the cols flow gracefully. minSize lowered to ~widest col so the
+  //    middle can shrink down to a single-column stack before the root needs to
+  //    wrap the middle entirely to a new line.
+  {
+    guid: middle.cloneGuid,
+    stackChildPrimaryGrow: 1,
+    minSize: { x: 200, y: 0 },
+    stackWrap: 'WRAP',
+    stackPrimaryAlignItems: 'MIN',
+    stackSpacing: 32,
+    stackCounterSpacing: 24,
+    stackCounterSizing: 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE',
+  },
+  // 3a/3b. Each of the 3 columns inside Frame 537 needs a min readable width
+  //        so they don't compress past their natural text width and overlap.
+  //        (Frame 530 / Languages already gets RESIZE_TO_FIT below at step 5.)
+  {
+    guid: colQuick.cloneGuid,
+    minSize: { x: 100, y: 0 },
+  },
+  {
+    guid: colLegal.cloneGuid,
+    minSize: { x: 160, y: 0 },     // wider — "Terms & Conditions" needs the room
+  },
+  // 4. Right icon stack: keep its natural width but center it vertically when wrapped.
+  {
+    guid: right.cloneGuid,
+    stackChildPrimaryGrow: 0,
+    stackChildAlignSelf: 'CENTER',
+  },
+  // 5. Languages column: align with sister columns (Hug instead of Fixed).
   {
     guid: langs.cloneGuid,
     stackPrimarySizing: 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE',
   },
-  // 4. Headline text: wrap when the parent shrinks
+  // 6. Headline text: wrap when the parent shrinks.
   {
     guid: headline.cloneGuid,
     textAutoResize: 'HEIGHT',
+  },
+  // 7. Image at the bottom of the left card: stretch to fill the card's width
+  //    (left card is VERTICAL stack, so STRETCH on the child = fill its X axis).
+  {
+    guid: image.cloneGuid,
+    stackChildAlignSelf: 'STRETCH',
   },
 ];
 
