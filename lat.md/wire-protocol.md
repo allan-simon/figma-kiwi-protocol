@@ -117,6 +117,20 @@ It carries just `editInfo` and `editScopeInfo`. **Also not required.** A single-
 
 Figma's wire format calls auto-layout `stack`, not `layout`. This is the most surprising vocabulary mismatch with Figma's plugin API. See [[auto-layout]] for the full mapping.
 
+## Asset references
+
+Inline `__bytes` fields scattered across nodeChanges (`fontMetaData.fontDigest`, `fillPaints.image.hash`, `imageThumbnail.hash`, `thumbHash`) are NOT raw image / font data.
+
+They are content-addressed hashes pointing into Figma's globally-deduplicated asset store. Cloning a node verbatim copies the hash; the actual bytes are fetched from the server lazily by clients that need them. This is why the [[clone#Deep clone]] strategy can ignore inline `__bytes` — they reference shared assets, not embedded content.
+
+To replace an image you cannot just rewrite the hash. You have to upload new bytes via Figma's image upload API and use the resulting hash. That API is not yet reverse-engineered by this project.
+
+## editInfo timestamps
+
+Every nodeChange carries an optional `editInfo: { userId, createdAt, lastEditedAt }`.
+
+`createdAt` and `lastEditedAt` are unix epoch seconds (not milliseconds). They survive across edits. Useful for forensics when you need to know when a specific node was created or last touched, e.g. to assess whether a "messy structure" is legacy debt or an active design choice. Read-only metadata — clients send updated `lastEditedAt` on mutations but the server is the source of truth.
+
 ## See also
 
 Pointers to the related sections of this knowledge base.
@@ -124,3 +138,4 @@ Pointers to the related sections of this knowledge base.
 - [[capture]] — capturing wire frames via CDP
 - [[standalone-client]] — opening our own WebSocket
 - [[auto-layout]] — stack* fields and their plugin-API equivalents
+- [[figma-sites]] — Figma's responsive set / breakpoint system

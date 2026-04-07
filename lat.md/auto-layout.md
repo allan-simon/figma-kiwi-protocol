@@ -140,6 +140,20 @@ The pattern for a real responsive horizontal layout. Combines wrap, growable chi
 
 When the parent shrinks below `child_minSize_sum + spacing + padding`, children flow to a new line instead of compressing past their min.
 
+## Pitfalls
+
+Things that ack at the wire level but produce surprising visual results. Each was discovered the hard way.
+
+### `SPACE_EVENLY` ignores `stackSpacing`
+
+When `stackPrimaryAlignItems` is `"SPACE_EVENLY"` (or `"SPACE_BETWEEN"`), Figma distributes the available space between children and the explicit `stackSpacing` value is ignored.
+
+The bigger problem: when the parent is resized smaller than the sum of the children's widths, the gap goes negative — children **overlap** silently. There is no built-in floor. Combine `SPACE_EVENLY` with `minSize` on each child if you need it to remain safe under shrink, or use `"MIN"` justify with a fixed gap.
+
+### `minSize` accepts the wrong shape silently
+
+The wire format wraps `minSize` and `maxSize` in an `OptionalVector`. See [[builder]] for the exact gotcha and the auto-wrap helper.
+
 ## Action labels worth knowing
 
 When reading `editScopeInfo.snapshots[].frames[].stack[].label` in captured frames, these labels mark the user actions that touch auto-layout. Useful for filtering captures when reverse-engineering more complex behaviours.
