@@ -46,8 +46,9 @@ if (composeIdx !== -1) {
     const childTreeNode = tree.get(childId);
     if (!childTreeNode) return null;
     const nc = childTreeNode.raw;
-    const t = nc.transform || {};
-    return { node: nc, transform: { x: t.m02 || 0, y: t.m12 || 0 } };
+    // Pass the full 2x3 affine so composeSvgIcon can emit matrix(...) for
+    // scaled/rotated/mirrored children (e.g. horizontally-flipped icons).
+    return { node: nc, transform: nc.transform || {} };
   }).filter(Boolean);
 
   function getSvgFile(nid) {
@@ -110,8 +111,63 @@ for (const [nid, info] of allSvgs) {
   index[nid] = { name: info.name, type: info.type, file: filename, w: info.w, h: info.h };
 }
 
+// FRAME/INSTANCE composition pass — iconify-style containers hide the glyph
+// in a child VECTOR while the FRAME itself has a hidden bounding-box fill.
+// Rewrite those container entries to a composed SVG so lookups by the
+// container id return the rendered icon, not an empty/background rect.
+const sgPath = `${DIR}/scenegraph.json`;
+let composedCount = 0;
+if (existsSync(sgPath)) {
+  const sg = JSON.parse(readFileSync(sgPath, 'utf8'));
+  const tree = buildTree(sg);
+
+  const getSvgFile = (nid) => {
+    const entry = index[nid];
+    if (!entry?.file) return null;
+    const p = `${OUT_DIR}/${entry.file}`;
+    return existsSync(p) ? readFileSync(p, 'utf8') : null;
+  };
+
+  for (const [nid, treeNode] of tree) {
+    if (treeNode.type !== 'FRAME' && treeNode.type !== 'INSTANCE') continue;
+    if (!treeNode.children?.length) continue;
+
+    const hasVectorChild = treeNode.children.some(cid => {
+      const c = tree.get(cid);
+      return c && c.type === 'VECTOR' && index[cid];
+    });
+    if (!hasVectorChild) continue;
+
+    const containerNc = treeNode.raw;
+    const childNodes = treeNode.children.map(cid => {
+      const c = tree.get(cid);
+      if (!c) return null;
+      // Full 2x3 affine so composeSvgIcon can preserve scale/rotate/mirror.
+      return { node: c.raw, transform: c.raw.transform || {} };
+    }).filter(Boolean);
+
+    const svg = composeSvgIcon(containerNc, childNodes, getSvgFile);
+    if (!svg) continue;
+
+    const existingFile = index[nid]?.file;
+    const safeName = (treeNode.name || nid).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
+    const filename = existingFile || `${safeName}__${nid.replace(':', '_')}.svg`;
+    writeFileSync(`${OUT_DIR}/${filename}`, svg);
+    const size = containerNc.size || {};
+    index[nid] = {
+      name: treeNode.name,
+      type: treeNode.type,
+      file: filename,
+      w: size.x || 0,
+      h: size.y || 0,
+      composed: true,
+    };
+    composedCount++;
+  }
+}
+
 writeFileSync(`${DIR}/svg_index.json`, JSON.stringify(index, null, 2));
-console.log(`Extracted ${allSvgs.size} SVGs to ${OUT_DIR}/`);
+console.log(`Extracted ${allSvgs.size} SVGs to ${OUT_DIR}/ (composed ${composedCount} FRAME/INSTANCE containers)`);
 
 // Summary
 const icons = [...allSvgs.entries()].filter(([, v]) => /icon/i.test(v.name));
