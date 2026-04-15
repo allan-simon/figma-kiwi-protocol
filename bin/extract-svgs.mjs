@@ -2,21 +2,36 @@
 // Extract all VECTOR nodes from decoded Figma pages as individual SVG files.
 //
 // Usage:
-//   figma-kiwi extract-svgs
+//   figma-kiwi extract-svgs [--scenegraph <path>] [--out <dir>] [--decoder <path>]
+//   figma-kiwi extract-svgs --compose <node_id> [--scenegraph <path>] [--out <dir>]
 //
 // Environment:
-//   FIGMA_KIWI_DIR   Directory with captured .bin files (default: /tmp/figma_kiwi)
+//   FIGMA_KIWI_DIR   Base directory with captured .bin files + decoder + (by default)
+//                    scenegraph.json and svgs/ output (default: /tmp/figma_kiwi).
+//                    CLI flags take precedence over the derived paths.
 
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync } from 'fs';
 import { createRequire } from 'module';
 import { isZstdCompressed } from '../lib/kiwi.mjs';
-import { extractSvgs, composeSvgIcon } from '../lib/svg.mjs';
+import { extractSvgs, composeSvgIcon, composeIconContainers } from '../lib/svg.mjs';
 import { nodeId, buildTree, mergePages, decodePage } from '../lib/scenegraph.mjs';
 
 const require = createRequire(import.meta.url);
 const DIR = process.env.FIGMA_KIWI_DIR || '/tmp/figma_kiwi';
-const DECODER_PATH = `${DIR}/figma_decoder.js`;
-const OUT_DIR = `${DIR}/svgs`;
+
+// Parse CLI flags. Callers (e.g. the figma skill wrapper) can override
+// individual paths without having to relocate the whole FIGMA_KIWI_DIR.
+function flagValue(name) {
+  const i = process.argv.indexOf(name);
+  return i !== -1 ? process.argv[i + 1] : null;
+}
+const SCENEGRAPH_PATH = flagValue('--scenegraph') || `${DIR}/scenegraph.json`;
+const OUT_DIR = flagValue('--out') || `${DIR}/svgs`;
+const DECODER_PATH = flagValue('--decoder') || `${DIR}/figma_decoder.js`;
+// svg_index.json lives alongside the other bookkeeping in DIR, not inside
+// OUT_DIR — that keeps the index stable when callers redirect the svg file
+// output (e.g. a sprite-build script that wants svgs/ isolated).
+const SVG_INDEX_PATH = flagValue('--index') || `${DIR}/svg_index.json`;
 
 // --compose <node_id>: compose an inline-ready SVG icon from a SYMBOL and its children
 const composeIdx = process.argv.indexOf('--compose');
@@ -29,10 +44,10 @@ if (composeIdx !== -1) {
   }
 
   // Need scenegraph.json (from decode) and svg_index + svg files (from extract-svgs)
-  const sgPath = `${DIR}/scenegraph.json`;
-  const svgIndexPath = `${DIR}/svg_index.json`;
-  if (!existsSync(sgPath)) { console.error('No scenegraph.json found. Run `figma-kiwi decode` first.'); process.exit(1); }
-  if (!existsSync(svgIndexPath)) { console.error('No svg_index.json found. Run `figma-kiwi extract-svgs` first (without --compose).'); process.exit(1); }
+  const sgPath = SCENEGRAPH_PATH;
+  const svgIndexPath = SVG_INDEX_PATH;
+  if (!existsSync(sgPath)) { console.error(`No scenegraph.json found at ${sgPath}. Run \`figma-kiwi decode\` first.`); process.exit(1); }
+  if (!existsSync(svgIndexPath)) { console.error(`No svg_index.json found at ${svgIndexPath}. Run \`figma-kiwi extract-svgs\` first (without --compose).`); process.exit(1); }
 
   const sg = JSON.parse(readFileSync(sgPath, 'utf8'));
   const svgIndex = JSON.parse(readFileSync(svgIndexPath, 'utf8'));
@@ -112,13 +127,13 @@ for (const [nid, info] of allSvgs) {
 }
 
 // FRAME/INSTANCE composition pass — iconify-style containers hide the glyph
-// in a child VECTOR while the FRAME itself has a hidden bounding-box fill.
-// Rewrite those container entries to a composed SVG so lookups by the
-// container id return the rendered icon, not an empty/background rect.
-const sgPath = `${DIR}/scenegraph.json`;
+// in a child VECTOR (or a nested BOOLEAN_OPERATION under a wrapper FRAME)
+// while the FRAME itself has a hidden bounding-box fill. The lib function
+// composeIconContainers() encapsulates the heuristic and the recursive
+// flatten through wrapper containers; we supply file I/O here.
 let composedCount = 0;
-if (existsSync(sgPath)) {
-  const sg = JSON.parse(readFileSync(sgPath, 'utf8'));
+if (existsSync(SCENEGRAPH_PATH)) {
+  const sg = JSON.parse(readFileSync(SCENEGRAPH_PATH, 'utf8'));
   const tree = buildTree(sg);
 
   const getSvgFile = (nid) => {
@@ -127,46 +142,32 @@ if (existsSync(sgPath)) {
     const p = `${OUT_DIR}/${entry.file}`;
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
   };
+  const hasExtractedSvg = (nid) => !!index[nid];
 
-  for (const [nid, treeNode] of tree) {
-    if (treeNode.type !== 'FRAME' && treeNode.type !== 'INSTANCE') continue;
-    if (!treeNode.children?.length) continue;
-
-    const hasVectorChild = treeNode.children.some(cid => {
-      const c = tree.get(cid);
-      return c && c.type === 'VECTOR' && index[cid];
-    });
-    if (!hasVectorChild) continue;
-
-    const containerNc = treeNode.raw;
-    const childNodes = treeNode.children.map(cid => {
-      const c = tree.get(cid);
-      if (!c) return null;
-      // Full 2x3 affine so composeSvgIcon can preserve scale/rotate/mirror.
-      return { node: c.raw, transform: c.raw.transform || {} };
-    }).filter(Boolean);
-
-    const svg = composeSvgIcon(containerNc, childNodes, getSvgFile);
-    if (!svg) continue;
-
-    const existingFile = index[nid]?.file;
-    const safeName = (treeNode.name || nid).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
-    const filename = existingFile || `${safeName}__${nid.replace(':', '_')}.svg`;
-    writeFileSync(`${OUT_DIR}/${filename}`, svg);
-    const size = containerNc.size || {};
-    index[nid] = {
-      name: treeNode.name,
-      type: treeNode.type,
-      file: filename,
-      w: size.x || 0,
-      h: size.y || 0,
-      composed: true,
-    };
-    composedCount++;
-  }
+  composedCount = composeIconContainers(tree, {
+    hasExtractedSvg,
+    getSvgFile,
+    onComposed: (nid, svg, containerNc, treeNode) => {
+      // Overwrite the container's own SVG file & index entry. The per-child
+      // VECTOR SVGs stay on disk so lookups by the child id still work.
+      const existingFile = index[nid]?.file;
+      const safeName = (treeNode.name || nid).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
+      const filename = existingFile || `${safeName}__${nid.replace(':', '_')}.svg`;
+      writeFileSync(`${OUT_DIR}/${filename}`, svg);
+      const size = containerNc.size || {};
+      index[nid] = {
+        name: treeNode.name,
+        type: treeNode.type,
+        file: filename,
+        w: size.x || 0,
+        h: size.y || 0,
+        composed: true,
+      };
+    },
+  });
 }
 
-writeFileSync(`${DIR}/svg_index.json`, JSON.stringify(index, null, 2));
+writeFileSync(SVG_INDEX_PATH, JSON.stringify(index, null, 2));
 console.log(`Extracted ${allSvgs.size} SVGs to ${OUT_DIR}/ (composed ${composedCount} FRAME/INSTANCE containers)`);
 
 // Summary
