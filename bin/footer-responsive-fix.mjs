@@ -127,7 +127,7 @@ const mutations = [
   {
     guid: left.cloneGuid,
     stackChildPrimaryGrow: 1,
-    minSize: { x: 320, y: 0 },
+    minSize: { value: { x: 320, y: 0 } },
     stackPrimaryAlignItems: 'SPACE_BETWEEN',
   },
   // 3. Middle 3-column block: grow + WRAP its own children so the 3 columns
@@ -140,7 +140,7 @@ const mutations = [
   {
     guid: middle.cloneGuid,
     stackChildPrimaryGrow: 1,
-    minSize: { x: 200, y: 0 },
+    minSize: { value: { x: 200, y: 0 } },
     stackWrap: 'WRAP',
     stackPrimaryAlignItems: 'MIN',
     stackSpacing: 32,
@@ -152,11 +152,11 @@ const mutations = [
   //        (Frame 530 / Languages already gets RESIZE_TO_FIT below at step 5.)
   {
     guid: colQuick.cloneGuid,
-    minSize: { x: 100, y: 0 },
+    minSize: { value: { x: 100, y: 0 } },
   },
   {
     guid: colLegal.cloneGuid,
-    minSize: { x: 160, y: 0 },     // wider — "Terms & Conditions" needs the room
+    minSize: { value: { x: 160, y: 0 } },     // wider — "Terms & Conditions" needs the room
   },
   // 4. Right icon stack: keep its natural width but center it vertically when wrapped.
   {
