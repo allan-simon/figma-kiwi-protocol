@@ -10,4 +10,5 @@ Knowledge base for the reverse-engineered Figma binary multiplayer protocol. Doc
 - [[auto-layout]] — Figma's `stack*` field vocabulary mapped to plugin-API names
 - [[clone]] — deep-clone a node subtree into a fresh independent copy via the wire protocol
 - [[builder]] — author Figma nodes from scratch with the wire-format gotchas pre-handled
+- [[quality]] — score a subtree's structural quality (GOOD/FAIR/POOR) and flatten it when the hierarchy lies
 - [[figma-sites]] — Figma's responsive set / breakpoint system, why it's only for Figma Sites, why container queries don't exist

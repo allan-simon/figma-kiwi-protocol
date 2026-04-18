@@ -18,6 +18,8 @@ const commands = {
   'footer-responsive-fix': './footer-responsive-fix.mjs',
   'extract-svgs': './extract-svgs.mjs',
   'to-html': './to-html.mjs',
+  quality: './quality.mjs',
+  flatten: './flatten.mjs',
 };
 
 if (!cmd || cmd === '--help' || cmd === '-h') {
@@ -34,6 +36,8 @@ Commands:
   extract-svgs        Extract VECTOR nodes as individual SVG files
   extract-svgs --compose <id>  Compose SYMBOL icon into inline-ready SVG
   to-html             Generate HTML/Tailwind from scenegraph nodes
+  quality             Score a node's structural quality (GOOD / FAIR / POOR)
+  flatten             Y-banded flat dump of a subtree (use when quality is POOR)
 
 Environment variables:
   CDP_WS_URL        Chrome DevTools WebSocket URL
