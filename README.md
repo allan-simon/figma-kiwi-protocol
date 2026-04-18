@@ -1,6 +1,6 @@
 # figma-kiwi-protocol
 
-Decode Figma's binary Kiwi wire protocol. Extract the full scenegraph, SVG vectors, and CSS properties from WebSocket frames — no REST API rate limits, no paid plan required.
+Read **and write** Figma files over their binary Kiwi wire protocol. Extract the full scenegraph, SVG vectors, and CSS from WebSocket frames — then push mutations back to live files from a script, no UI automation. No REST API rate limits, no paid plan required.
 
 Ships as a **[lib](#library-usage)**, **[CLI](#quick-start)**, **[MCP server](#mcp-server)**, and **[Claude Code plugin](#claude-code-plugin)**.
 
@@ -8,7 +8,9 @@ Ships as a **[lib](#library-usage)**, **[CLI](#quick-start)**, **[MCP server](#m
 
 Figma uses [Kiwi](https://github.com/nicowilliams/kiwi) (a binary serialization format by Evan Wallace) over WebSocket for real-time sync between the editor and the server. When you open a Figma file in the browser, the entire scenegraph — every node, every vector path, every style — is streamed as Kiwi-encoded binary frames.
 
-This library intercepts those frames via Chrome DevTools Protocol, decodes the binary data, and gives you structured access to everything Figma knows about your design:
+This library speaks that protocol in both directions.
+
+**Read** — intercept frames via Chrome DevTools Protocol, decode the binary, and get structured access to everything Figma knows about your design:
 
 - **Full scenegraph** as JSON (5000+ nodes for a typical file)
 - **SVG path extraction** from Figma's proprietary `commandsBlob` and `vectorNetworkBlob` binary formats
@@ -16,11 +18,18 @@ This library intercepts those frames via Chrome DevTools Protocol, decodes the b
 - **Component variants**, prototype interactions, and state machines
 - **Image hash mapping** to Figma's CDN URLs
 
+**Write** — open a standalone Node WebSocket to Figma's multiplayer endpoint (no Chrome at runtime) and apply mutations that propagate live to every connected editor:
+
+- **Rename layers**, toggle auto-layout, change padding, spacing, hug/fixed sizing
+- **Deep-clone** a subtree into a fresh independent copy (60+ nodes in one shot)
+- **Author from scratch** with a builder that pre-handles the wire-format gotchas
+- **Batch edits** from a JSON file, with dry-run support
+
 ## Why
 
-The Figma REST API has aggressive rate limits. The official MCP server requires a paid Dev Mode subscription. Community MCP servers hit the same REST API limits.
+The Figma REST API has aggressive rate limits and is read-only. The official MCP server requires a paid Dev Mode subscription. Community MCP servers hit the same REST API limits. Plugins run in the browser sandbox and can't be driven from a script or CI.
 
-This tool reads the same data Figma's own editor reads — directly from the WebSocket stream. No rate limits. No paid plan. Just the raw protocol.
+This tool reads and writes the same data Figma's own editor reads and writes — directly off the WebSocket. No rate limits. No paid plan. No browser at runtime once cookies are captured. Just the raw protocol.
 
 ## Architecture
 
@@ -30,21 +39,31 @@ lib/          Pure functions — buffer in, data out. No I/O, no side effects.
 ├── scenegraph.mjs   decode, merge, and query scenegraph data
 ├── svg.mjs          commandsBlob / vectorNetworkBlob → SVG paths
 ├── css.mjs          node properties → CSS (Kiwi + REST API formats)
+├── session.mjs      FigmaSession — persistent multiplayer WebSocket + mutate()
+├── clone.mjs        cloneSubtree — deep copy a node subtree into fresh guids
+├── builder.mjs      FigmaBuilder — author nodes from scratch with gotchas handled
 └── index.mjs        re-exports everything
 
 bin/          CLI tools — CDP capture, file I/O, orchestration.
-├── cli.mjs              entry point
-├── capture.mjs          single page WebSocket capture
-├── capture-all-pages.mjs   multi-page capture (auto-discovers pages)
-├── decode.mjs           binary → JSON scenegraph
-└── extract-svgs.mjs     vector nodes → individual SVG files
+├── cli.mjs                   entry point
+├── capture.mjs               single page WebSocket capture
+├── capture-all-pages.mjs     multi-page capture (auto-discovers pages)
+├── decode.mjs                binary → JSON scenegraph
+├── decode-frames.mjs         decode every captured frame for inspection
+├── extract-svgs.mjs          vector nodes → individual SVG files
+├── to-html.mjs               scenegraph node → HTML / Tailwind
+├── recon-handshake.mjs       one-shot CDP: steal cookies + multiplayer URL
+├── standalone-client.mjs     low-level probe: full handshake + one mutation
+├── figma-write.mjs           high-level write CLI (rename, auto-layout, …)
+├── figma-clone.mjs           deep-clone a subtree into a new independent copy
+└── build-footer-fresh.mjs    example: author a component from scratch
 ```
 
-The lib has **zero dependencies** and **zero I/O**. It takes `Uint8Array` buffers and returns objects. You can use it in an MCP server, a Figma plugin, a build tool, or anything else.
+The read path is CDP-attached — the user's Chrome bears the auth, we just listen. The write path is **standalone**: `recon-handshake` steals cookies and the multiplayer URL once, then `FigmaSession` opens its own WebSocket from Node. No Chrome at runtime, no UI automation, runs from CI.
 
-The CLI tools handle the messy parts: Chrome DevTools Protocol, file system, zstd decompression, Kiwi decoder generation.
+The lib has **zero runtime dependencies** on the read path and returns plain objects. `FigmaSession` uses `ws` and Node 22's built-in `node:zlib` zstd — no native modules. Kiwi encoding/decoding uses the schema Figma itself sends us in the first WebSocket frame.
 
-## Quick start
+## Quick start — read
 
 ```bash
 npm install figma-kiwi-protocol
@@ -67,7 +86,32 @@ npx figma-kiwi-protocol decode
 npx figma-kiwi-protocol extract-svgs
 ```
 
+## Quick start — write
+
+```bash
+# 1. One-shot recon: steal cookies + multiplayer URL from your open Chrome tab.
+#    Writes /tmp/figma_handshake.json — rerun only when cookies expire.
+npx figma-kiwi-protocol recon-handshake
+
+# 2. Rename a layer by guid (format: sessionID:localID from the decoded scenegraph)
+npx figma-kiwi-protocol write rename 2004:16177 "HELLO_FROM_NODE"
+
+# 3. Turn a frame into a horizontal auto-layout stack that hugs its contents
+npx figma-kiwi-protocol write enable-al 2010:16169 \
+    --direction HORIZONTAL --hug both --padding 16 --spacing 8
+
+# 4. Deep-clone a component (60+ nodes, new guids, independent subtree)
+npx figma-kiwi-protocol clone 41:1923 --name-suffix " (clone)"
+
+# 5. Batch mode — run many mutations from a JSON file, dry-run first
+npx figma-kiwi-protocol write batch ./changes.json --dry-run
+```
+
+All mutations propagate live to every other connected Figma client — collaborators see the edit appear in real time, same as if you'd typed it.
+
 ## Library usage
+
+### Read
 
 ```javascript
 import {
@@ -92,8 +136,42 @@ const css = extractCSSFromKiwi(nodeChange);
 // Check if a binary frame contains the Kiwi schema
 if (isFigWireFrame(frameBytes)) {
   const compressedSchema = extractCompressedSchema(frameBytes);
-  // decompress with fzstd, then generate decoder with kiwi CLI
+  // decompress with zstd, then generate decoder with kiwi CLI
 }
+```
+
+### Write
+
+```javascript
+import { FigmaSession } from 'figma-kiwi-protocol/session';
+import { cloneSubtree } from 'figma-kiwi-protocol/clone';
+import { FigmaBuilder } from 'figma-kiwi-protocol/builder';
+
+// Open a persistent multiplayer session from /tmp/figma_handshake.json
+const session = await FigmaSession.connect();
+
+// High-level helpers — each resolves when the server echoes back our ackID
+await session.rename({ sessionID: 2004, localID: 16177 }, 'New Name');
+await session.setStackMode({ sessionID: 2010, localID: 16169 }, 'HORIZONTAL');
+await session.setPadding({ sessionID: 2010, localID: 16169 }, { all: 16 });
+
+// Deep-clone a 60-node component into a fresh independent subtree
+const { nodeChanges, blobs } = cloneSubtree({
+  scenegraph,          // decoded scenegraph from capture + decode-frames
+  sourceGuid: '41:1923',
+  sessionID: session.sessionID,
+  nameSuffix: ' (clone)',
+});
+await session.mutate({ nodeChanges, blobs });
+
+// Author a new frame from scratch — builder pre-handles OptionalVector wrapping
+// and sibling parentIndex.position uniqueness (see lat.md/builder.md)
+const b = new FigmaBuilder({ sessionID: session.sessionID });
+const root = b.frame({ name: 'Card', stackMode: 'VERTICAL', padding: 16 });
+b.rectangle({ parent: root, size: { x: 320, y: 120 } });
+await session.mutate({ nodeChanges: b.build() });
+
+await session.close();
 ```
 
 ## Binary formats documented
@@ -216,8 +294,13 @@ Claude will have access to all capture, decode, and query commands.
 
 ### Protocol
 - **Incremental updates**: Only the initial full scenegraph load is captured. Real-time edits (subsequent smaller WS frames) are not decoded.
-- **Write support**: Read-only — no ability to push changes back to Figma.
 - **Schema versioning**: The Kiwi schema (~558 types) is extracted per-session. Figma may change it at any time.
+
+### Write
+- **INSTANCE overrides**: Mutating `stack*` or `name` on an INSTANCE acks at the protocol level but the server silently reverts it — instance overrides go through a mechanism we haven't reversed yet. Workaround: [deep-clone](#library-usage) the main component, edit the clone, then port.
+- **TEXT from scratch**: The builder does not yet author TEXT nodes (they require fontName, fontSize, lineHeight, letterSpacing, fontVariations, textData…). Clone an existing TEXT leaf and override `characters` instead.
+- **SYMBOL from scratch**: The builder produces FRAMES, not main components. Convert to a component in the UI after authoring.
+- **Gradient / image fills in builder**: Only solid colors are wired up; image fills work when cloning because `__bytes` hashes are inherited inline.
 
 ### Distribution
 - **npm publish**: Not yet published to npm registry.
