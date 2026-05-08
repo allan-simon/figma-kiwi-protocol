@@ -20,6 +20,7 @@ const commands = {
   'to-html': './to-html.mjs',
   quality: './quality.mjs',
   flatten: './flatten.mjs',
+  comments: './comments.mjs',
 };
 
 if (!cmd || cmd === '--help' || cmd === '-h') {
@@ -38,6 +39,7 @@ Commands:
   to-html             Generate HTML/Tailwind from scenegraph nodes
   quality             Score a node's structural quality (GOOD / FAIR / POOR)
   flatten             Y-banded flat dump of a subtree (use when quality is POOR)
+  comments            Fetch comments via REST API or CDP-cookies fallback
 
 Environment variables:
   CDP_WS_URL        Chrome DevTools WebSocket URL

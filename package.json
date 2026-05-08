@@ -9,7 +9,8 @@
     "./kiwi": "./lib/kiwi.mjs",
     "./scenegraph": "./lib/scenegraph.mjs",
     "./svg": "./lib/svg.mjs",
-    "./css": "./lib/css.mjs"
+    "./css": "./lib/css.mjs",
+    "./comments": "./lib/comments.mjs"
   },
   "bin": {
     "figma-kiwi-protocol": "./bin/cli.mjs"

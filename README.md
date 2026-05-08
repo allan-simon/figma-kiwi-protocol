@@ -84,6 +84,12 @@ npx figma-kiwi-protocol decode
 
 # 5. Extract SVGs:
 npx figma-kiwi-protocol extract-svgs
+
+# 6. Pull all comments (REST API, or CDP-cookies fallback when the token is
+#    expired / lacks file_comments:read scope). `--threads` folds replies
+#    under their root, `--flat` flattens client_meta into top-level fields
+#    (page_id, node_id, node_offset, canvas_xy, stable_path).
+npx figma-kiwi-protocol comments $FIGMA_FILE_KEY --threads --flat
 ```
 
 ## Quick start — write
