@@ -175,9 +175,33 @@ def extract_css(raw):
         if fn:
             css["font-family"] = fn.get("family", "")
             css["font-style"] = fn.get("style", "")
+        # Figma stores a node-level fontSize but designers can override the size
+        # per-character via styleOverrideTable. The actual rendered size lives in
+        # `derivedTextData.glyphs[*].fontSize`. When ALL glyphs share a single
+        # size that differs from the node-level value, prefer the glyph value
+        # (and flag it) — otherwise the node-level fontSize lies.
         fs = raw.get("fontSize")
-        if fs:
+        dtd = raw.get("derivedTextData", {})
+        glyphs = dtd.get("glyphs", []) if isinstance(dtd, dict) else []
+        glyph_sizes = {g.get("fontSize") for g in glyphs if g.get("fontSize") is not None}
+        if len(glyph_sizes) == 1:
+            glyph_fs = next(iter(glyph_sizes))
+            if fs is not None and abs(glyph_fs - fs) > 0.5:
+                css["font-size"] = f"{glyph_fs:.0f}px (glyph-override; node says {fs:.0f}px)"
+            else:
+                css["font-size"] = f"{glyph_fs:.0f}px"
+        elif len(glyph_sizes) > 1:
+            sizes = sorted(glyph_sizes)
+            css["font-size"] = f"mixed: {', '.join(f'{s:.0f}px' for s in sizes)} (per-glyph)"
+        elif fs:
             css["font-size"] = f"{fs:.0f}px"
+        # Flag per-character style overrides (bold/italic/color runs inside the text)
+        sot = td.get("styleOverrideTable", []) if isinstance(td, dict) else []
+        if sot:
+            styles = {s.get("fontName", {}).get("style") for s in sot if s.get("fontName")}
+            styles.discard(None)
+            if styles:
+                css["font-runs"] = f"has {len(sot)} style override(s): {', '.join(sorted(styles))} — run `text <id>` for the breakdown"
         lh = raw.get("lineHeight", {})
         if lh and lh.get("value"):
             css["line-height"] = f"{lh['value']:.0f}px"
@@ -191,14 +215,36 @@ def extract_css(raw):
         ta = raw.get("textAlignHorizontal")
         if ta and ta != "LEFT":
             css["text-align"] = ta.lower()
+        tc = raw.get("textCase")
+        if tc and tc != "ORIGINAL":
+            css["text-transform"] = "uppercase" if tc == "UPPER" else tc.lower()
 
-    # Stroke
+    # Stroke — honour both color.a AND paint.opacity (Figma stores them
+    # independently; older code emitted "1px solid #ffffff" for what was
+    # really "1px solid rgba(255,255,255,0.2)" + dashed).
     strokes = raw.get("strokePaints", [])
     sw = raw.get("strokeWeight")
+    dash = raw.get("dashPattern", [])
     if sw and strokes:
-        c = strokes[0].get("color", {})
+        sp = strokes[0]
+        c = sp.get("color", {})
         r, g, b = int(c.get("r", 0) * 255), int(c.get("g", 0) * 255), int(c.get("b", 0) * 255)
-        css["border"] = f"{sw:.0f}px solid #{r:02x}{g:02x}{b:02x}"
+        a = c.get("a", 1) * sp.get("opacity", 1)
+        style = "dashed" if dash else "solid"
+        if a < 0.999:
+            css["border"] = f"{sw:.0f}px {style} rgba({r}, {g}, {b}, {a:.2f})"
+        else:
+            css["border"] = f"{sw:.0f}px {style} #{r:02x}{g:02x}{b:02x}"
+        if dash:
+            css["border-dasharray"] = ",".join(str(int(d)) for d in dash)
+
+    # Effects (inner/outer shadow, blur) — flag presence so callers know
+    # to inspect via `node <id>` for full details rather than missing it.
+    effects = raw.get("effects", [])
+    visible_effects = [e for e in effects if e.get("visible", True)]
+    if visible_effects:
+        types = [e.get("type", "?") for e in visible_effects]
+        css["effects"] = f"{len(visible_effects)} effect(s): {', '.join(types)}"
 
     return css
 
@@ -217,6 +263,70 @@ def extract_texts(nodes, nid, results=None):
     for cid in n["children"]:
         extract_texts(nodes, cid, results)
     return results
+
+
+def extract_text_runs(raw):
+    """Decode a TEXT node into per-character runs of (text, style, fontSize, color).
+
+    Figma stores text with three independent layers of overrides:
+      - `fontName` / `fontSize` at the node level (the "default" run)
+      - `textData.styleOverrideTable[]` — keyed style descriptors (Bold, color, …)
+      - `textData.characterStyleIDs[]` — one entry per character, picks a styleID
+      - `derivedTextData.glyphs[*].fontSize` — the *rendered* size (which a per-char
+        override can shrink/enlarge without touching the node's fontSize)
+
+    Designers freely mix Bold runs inside a Regular paragraph, swap font sizes
+    per-character to make "to Win" smaller than "Prices" even though the node
+    says 60px, etc. This function unifies those layers into a flat list of runs
+    so callers can copy the exact markup into a translation string.
+    """
+    td = raw.get("textData", {})
+    chars = td.get("characters", "")
+    ids = td.get("characterStyleIDs", [])
+    sot = td.get("styleOverrideTable", [])
+    dtd = raw.get("derivedTextData", {})
+    glyphs = dtd.get("glyphs", []) if isinstance(dtd, dict) else []
+    default_style = (raw.get("fontName") or {}).get("style", "")
+    default_size = raw.get("fontSize")
+
+    style_map = {0: {"fontStyle": default_style, "fontSize": default_size, "color": None}}
+    for s in sot:
+        sid = s.get("styleID")
+        if sid is None:
+            continue
+        fs = s.get("fontName", {}).get("style", default_style) if s.get("fontName") else default_style
+        size = s.get("fontSize", default_size)
+        color = None
+        fps = s.get("fillPaints") or []
+        if fps and fps[0].get("type") == "SOLID":
+            c = fps[0].get("color", {})
+            r, g, b = int(c.get("r", 0) * 255), int(c.get("g", 0) * 255), int(c.get("b", 0) * 255)
+            a = c.get("a", 1) * fps[0].get("opacity", 1)
+            color = f"rgba({r}, {g}, {b}, {a:.2f})" if a < 0.999 else f"#{r:02x}{g:02x}{b:02x}"
+        style_map[sid] = {"fontStyle": fs, "fontSize": size, "color": color}
+
+    runs = []
+    if not chars:
+        return runs
+    # Characters past the end of `ids` revert to the default style (id 0),
+    # NOT to whatever the previous styled run used — Figma stores trailing
+    # default-styled chars by truncating the ids array rather than padding it.
+    cur_id = ids[0] if ids else 0
+    cur_start = 0
+    for i in range(1, len(chars) + 1):
+        char_id = ids[i] if i < len(ids) else 0
+        if i == len(chars) or char_id != cur_id:
+            info = style_map.get(cur_id, style_map[0]).copy()
+            # If glyphs carry a different fontSize for this range, prefer that
+            if cur_start < len(glyphs):
+                g_size = glyphs[cur_start].get("fontSize")
+                if g_size is not None:
+                    info["fontSize"] = g_size
+            info["text"] = chars[cur_start:i]
+            runs.append(info)
+            cur_start = i
+            cur_id = char_id
+    return runs
 
 def extract_state_machine(nodes, parent_nid, variant_ids):
     """Build a state machine from prototype interactions within a component's variants."""
@@ -587,6 +697,47 @@ def main():
         if target:
             css = extract_css(target["_raw"])
             print(json.dumps(css, indent=2))
+        else:
+            print(f"Node '{query}' not found")
+
+    elif cmd == "text":
+        if len(sys.argv) < 3:
+            print("Usage: figma_local.py text <name_or_id>")
+            sys.exit(1)
+        query = sys.argv[2]
+        target = find_by_id(nodes, query)
+        if not target:
+            matches = find_by_name(nodes, query)
+            if matches:
+                target = next(iter(matches.values()))
+
+        if target and target["type"] == "TEXT":
+            runs = extract_text_runs(target["_raw"])
+            if not runs:
+                print(f"Node {target['id']} has no text data")
+            else:
+                # Single uniform run? Print compactly.
+                first = runs[0]
+                uniform = all(
+                    r["fontStyle"] == first["fontStyle"]
+                    and r["fontSize"] == first["fontSize"]
+                    and r["color"] == first["color"]
+                    for r in runs
+                )
+                full_text = "".join(r["text"] for r in runs)
+                print(f"Text: {full_text!r}")
+                if uniform:
+                    sz = f"{first['fontSize']:.0f}px" if first["fontSize"] is not None else "?"
+                    color = f" color={first['color']}" if first["color"] else ""
+                    print(f"  Single run: {first['fontStyle']} {sz}{color}")
+                else:
+                    print(f"  {len(runs)} run(s):")
+                    for r in runs:
+                        sz = f"{r['fontSize']:.0f}px" if r["fontSize"] is not None else "?"
+                        color = f" color={r['color']}" if r["color"] else ""
+                        print(f"    [{r['fontStyle']:<10} {sz:<8}{color}] {r['text']!r}")
+        elif target:
+            print(f"Node {target['id']} is {target['type']}, not TEXT — use `node` or `css` for non-text nodes")
         else:
             print(f"Node '{query}' not found")
 
