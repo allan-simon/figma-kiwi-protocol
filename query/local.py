@@ -1095,6 +1095,14 @@ def main():
         # `overriddenSymbolID` overrides discovered along the way. Output lists
         # every Icon/* SYMBOL that would render inside the target — exactly what
         # you need to answer "which icon does this nav item display?".
+        #
+        # CRITICAL: also surface `componentPropAssignments` from each override.
+        # That's where Figma stores INSTANCE_SWAP prop values (e.g. "this nav
+        # item's `Icon left` prop swaps from default Icon/house to
+        # Icon/dashboard") and TEXT prop values. Missing this was the bug that
+        # made earlier nav-icon inspection report Icon/house everywhere on a
+        # file where the rendered design actually shows Icon/dashboard,
+        # Icon/playlist-bold, Icon/calendar, …
         if len(sys.argv) < 3:
             print("Usage: figma_local.py effective-tree <name_or_id> [--depth N] [--filter PREFIX]")
             sys.exit(1)
@@ -1168,10 +1176,67 @@ def main():
                 for cid in n.get("children", []):
                     walk(cid, indent + 1, swap_path + (cid,), swaps, depth + 1)
 
+        # Collect every componentPropAssignment found in symbolOverrides
+        # along the effective tree, then print them grouped by override path.
+        # This is where the visible icon overrides live (INSTANCE_SWAP props),
+        # not in `overriddenSymbolID` (which only swaps the WHOLE symbol).
+        def _scan_prop_assignments(start_id):
+            """Yield (path, text_val, icon_swap_name, icon_swap_id) tuples."""
+            visited = set()
+            stack = [start_id]
+            while stack:
+                cur = stack.pop()
+                if cur in visited:
+                    continue
+                visited.add(cur)
+                n = nodes.get(cur)
+                if not n:
+                    continue
+                raw = n.get("_raw", {})
+                sd = raw.get("symbolData", {}) if raw else {}
+                for o in sd.get("symbolOverrides", []):
+                    path = " / ".join(_gp(g) for g in o.get("guidPath", {}).get("guids", []))
+                    text_val = None
+                    icon_name = None
+                    icon_id = None
+                    for a in o.get("componentPropAssignments", []) or []:
+                        vv = a.get("varValue", {}) or {}
+                        v = vv.get("value", {}) or {}
+                        if isinstance(v.get("textDataValue"), dict):
+                            text_val = v["textDataValue"].get("characters")
+                        sym_id_val = v.get("symbolIdValue")
+                        if isinstance(sym_id_val, dict) and sym_id_val.get("guid"):
+                            tid = _gp(sym_id_val["guid"])
+                            tgt = nodes.get(tid)
+                            if tgt and (tgt.get("name", "") or "").startswith("Icon/"):
+                                icon_name = tgt.get("name")
+                                icon_id = tid
+                    if text_val or icon_name:
+                        yield (path, text_val, icon_name, icon_id)
+                # Recurse into children (effective tree)
+                if n.get("type") == "INSTANCE":
+                    sym_id = _gp(raw.get("symbolData", {}).get("symbolID", {})) if raw.get("symbolData") else None
+                    master = nodes.get(sym_id)
+                    if master:
+                        stack.extend(master.get("children", []))
+                stack.extend(n.get("children", []))
+
         nid = target["id"]
         print(f"Effective tree of: {target['name']} ({nid}) [{target['type']}]")
         if name_filter:
             print(f"(filtered to nodes matching '{name_filter}')")
+        # Prop-assignment summary FIRST — usually what the user wants
+        prop_rows = list(_scan_prop_assignments(nid))
+        if prop_rows:
+            print("\nInstance prop overrides (text + INSTANCE_SWAP):")
+            for path, text_val, icon_name, icon_id in prop_rows:
+                bits = []
+                if text_val is not None:
+                    bits.append(f'text="{text_val}"')
+                if icon_name:
+                    bits.append(f"icon={icon_name} ({icon_id})")
+                print(f"  {path}: {', '.join(bits)}")
+        print()
         print()
         walk(nid, 0, (nid,), _collect_swaps(target.get("_raw", {}), (nid,)), 0)
 
