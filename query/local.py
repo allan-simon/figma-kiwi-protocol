@@ -14,6 +14,12 @@ Usage:
   python3 figma_local.py components [<pattern>]   # list all components (optionally filter by name)
   python3 figma_local.py component <name_or_id>   # detailed view of a component (variants, props, tree)
   python3 figma_local.py instances <name_or_id>   # find all instances of a component
+  python3 figma_local.py effective-tree <name_or_id> [--depth N] [--filter PREFIX]
+                                                  # walk an INSTANCE's rendered subtree,
+                                                  # expand nested instances through their
+                                                  # masters, apply overriddenSymbolID
+                                                  # swaps — surfaces which Icon/* SYMBOL
+                                                  # actually renders inside each child
 """
 
 import json
@@ -1082,6 +1088,92 @@ def main():
                 print()
         else:
             print(f"No instances found for '{target['name']}'")
+
+    elif cmd == "effective-tree":
+        # Resolve an INSTANCE (or any node) into its rendered subtree, following
+        # every nested INSTANCE through its master template, and apply any
+        # `overriddenSymbolID` overrides discovered along the way. Output lists
+        # every Icon/* SYMBOL that would render inside the target — exactly what
+        # you need to answer "which icon does this nav item display?".
+        if len(sys.argv) < 3:
+            print("Usage: figma_local.py effective-tree <name_or_id> [--depth N] [--filter PREFIX]")
+            sys.exit(1)
+        query = sys.argv[2]
+        depth_limit = 8
+        name_filter = None
+        if "--depth" in sys.argv:
+            depth_limit = int(sys.argv[sys.argv.index("--depth") + 1])
+        if "--filter" in sys.argv:
+            name_filter = sys.argv[sys.argv.index("--filter") + 1]
+
+        target = find_by_id(nodes, query)
+        if not target:
+            matches = find_by_name(nodes, query)
+            if matches:
+                target = next(iter(matches.values()))
+        if not target:
+            print(f"Node '{query}' not found")
+            sys.exit(1)
+
+        def _gp(g):
+            return f"{g.get('sessionID', 0)}:{g.get('localID', 0)}"
+
+        def _collect_swaps(raw, base_path):
+            """Read symbolOverrides and return {child_path: swap_target_id}."""
+            swaps = {}
+            sd = raw.get("symbolData", {}) if raw else {}
+            for o in sd.get("symbolOverrides", []):
+                osid = o.get("overriddenSymbolID")
+                if not osid:
+                    continue
+                path = base_path + tuple(_gp(g) for g in o.get("guidPath", {}).get("guids", []))
+                swaps[path] = _gp(osid)
+            return swaps
+
+        def walk(nid, indent, swap_path, swaps, depth):
+            if depth > depth_limit:
+                return
+            n = nodes.get(nid)
+            if not n:
+                return
+            name = n.get("name", "")
+            ntype = n.get("type", "")
+
+            # If this is an INSTANCE, expand its master (or the swap target).
+            effective_master = None
+            if ntype == "INSTANCE":
+                raw = n.get("_raw", {})
+                sym_id = _gp(raw.get("symbolData", {}).get("symbolID", {})) if raw.get("symbolData") else None
+                # Walk-time swap (from a parent's symbolOverrides referencing this node)
+                if swap_path in swaps:
+                    sym_id = swaps[swap_path]
+                effective_master = nodes.get(sym_id) if sym_id else None
+                # Aggregate any swap overrides this instance itself contributes
+                swaps = {**swaps, **_collect_swaps(raw, swap_path)}
+
+            label = f"[{ntype}] {name} ({nid})"
+            if effective_master and effective_master.get("name") != name:
+                label += f"  → master {effective_master['name']} ({effective_master['id']})"
+
+            if name_filter is None or name_filter in name or (effective_master and name_filter in effective_master.get("name", "")):
+                print("  " * indent + label)
+
+            # Recurse into the effective subtree:
+            #  - For an INSTANCE: walk the master template's children (resolving swaps)
+            #  - For everything else: walk the node's own children
+            if effective_master:
+                for cid in effective_master.get("children", []):
+                    walk(cid, indent + 1, swap_path + (cid,), swaps, depth + 1)
+            else:
+                for cid in n.get("children", []):
+                    walk(cid, indent + 1, swap_path + (cid,), swaps, depth + 1)
+
+        nid = target["id"]
+        print(f"Effective tree of: {target['name']} ({nid}) [{target['type']}]")
+        if name_filter:
+            print(f"(filtered to nodes matching '{name_filter}')")
+        print()
+        walk(nid, 0, (nid,), _collect_swaps(target.get("_raw", {}), (nid,)), 0)
 
     else:
         print(f"Unknown command: {cmd}")
